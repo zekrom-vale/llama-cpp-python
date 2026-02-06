@@ -362,6 +362,35 @@ async def create_embedding(
         **request.model_dump(exclude={"user"}),
     )
 
+@router.post(
+    "/v1/rerank",
+    summary="Rerank",
+    dependencies=[Depends(authenticate)],
+    tags=[openai_v1_tag],
+)
+async def rerank(
+    query: str = Body(...),
+    documents: List[str] = Body(...),
+    top_n: Optional[int] = Body(None),
+    model: Optional[str] = Body(None),
+    llama_proxy: LlamaProxy = Depends(get_llama_proxy),
+):
+    # Use the proxy to get the model instance
+    llama = llama_proxy(model)
+    
+    # Run the CPU/GPU intensive ranking in the threadpool
+    scores = await run_in_threadpool(llama.rank, query=query, documents=documents)
+    
+    results = [
+        {"index": i, "relevance_score": float(score), "document": {"text": doc}}
+        for i, (score, doc) in enumerate(zip(scores, documents))
+    ]
+    
+    results.sort(key=lambda x: x["relevance_score"], reverse=True)
+    if top_n:
+        results = results[:top_n]
+        
+    return {"results": results}
 
 @router.post(
     "/v1/chat/completions",
