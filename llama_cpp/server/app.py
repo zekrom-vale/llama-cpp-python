@@ -373,31 +373,31 @@ async def create_embedding(
         llama_proxy(request.model).create_embedding,
         **request.model_dump(exclude={"user"}),
     )
+# llama_cpp/server/app.py
 
 @router.post(
-    "/v1/rerank",  # Match the /v1/ prefix pattern
+    "/v1/rerank",
     summary="Rerank",
     dependencies=[Depends(authenticate)],
     tags=[openai_v1_tag],
 )
 async def rerank(
     request: RerankRequest,
-    fastapi_app: FastAPI = Depends(get_app), # This gets the main app instance
+    llama_proxy: LlamaProxy = Depends(get_llama_proxy),
 ):
-    # Get the llama model from the app state
-    # llama-cpp-python usually stores it in app.state.llama_proxy
-    llama = fastapi_app.state.llama_proxy
-
+    """
+    Reranks a list of documents based on a query using embeddings.
+    """
     # 1. Get embedding for the query
-    query_embedding = llama.embed(request.query)
+    query_embedding = llama_proxy.embed(request.query)
     
     results = []
     for i, doc in enumerate(request.documents):
-        # 2. Get embedding for the individual document
-        doc_embedding = llama.embed(doc)
+        # 2. Get embedding for the current document
+        doc_embedding = llama_proxy.embed(doc)
         
-        # 3. Calculate dot product similarity
-        # (Assuming embeddings are normalized, which most GGUF embedding models are)
+        # 3. Calculate Dot Product similarity 
+        # (Works best if model embeddings are normalized)
         score = sum(a * b for a, b in zip(query_embedding, doc_embedding))
         
         results.append({
@@ -409,7 +409,7 @@ async def rerank(
     # Sort by score descending
     results.sort(key=lambda x: x["relevance_score"], reverse=True)
     
-    if request.top_n:
+    if request.top_n is not None:
         results = results[:request.top_n]
         
     return {"results": results}
