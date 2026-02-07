@@ -7,7 +7,8 @@ import contextlib
 
 from anyio import Lock
 from functools import partial
-from typing import List, Optional, Union, Dict
+from typing import List, Optional, Union, Dict, Any
+from pydantic import BaseModel
 
 import llama_cpp
 
