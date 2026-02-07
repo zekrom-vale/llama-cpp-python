@@ -4,6 +4,7 @@ import os
 import json
 import typing
 import contextlib
+import math
 
 from anyio import Lock
 from functools import partial
@@ -373,7 +374,6 @@ async def create_embedding(
         llama_proxy(request.model).create_embedding,
         **request.model_dump(exclude={"user"}),
     )
-# llama_cpp/server/app.py
 
 @router.post(
     "/v1/rerank",
@@ -385,25 +385,27 @@ async def rerank(
     request: RerankRequest,
     llama_proxy: LlamaProxy = Depends(get_llama_proxy),
 ):
-    # Use the model alias from the request to get the actual model instance
-    # If request.model is None, llama-cpp-python usually defaults to the first loaded model
     model_alias = request.model or list(llama_proxy.keys())[0]
     model = llama_proxy(model_alias)
 
-    # 1. Get embedding for the query string and extract the first vector
-    query_resp = model.embed(request.query)
-    # Extract the vector from the batch response (handle both list and dict returns)
-    query_embedding = query_resp[0] if isinstance(query_resp, list) else query_resp["data"][0]["embedding"]
+    def get_vec(text):
+        resp = model.embed(text)
+        return resp[0] if isinstance(resp, list) else resp["data"][0]["embedding"]
+
+    def cosine_similarity(v1, v2):
+        dot_product = sum(a * b for a, b in zip(v1, v2))
+        magnitude1 = math.sqrt(sum(a * a for a in v1))
+        magnitude2 = math.sqrt(sum(b * b for b in v2))
+        if not magnitude1 or not magnitude2:
+            return 0.0
+        return dot_product / (magnitude1 * magnitude2)
+
+    query_vec = get_vec(request.query)
     
     results = []
     for i, doc in enumerate(request.documents):
-        # 2. Get embedding for the current document
-        doc_resp = model.embed(doc)
-        doc_embedding = doc_resp[0] if isinstance(doc_resp, list) else doc_resp["data"][0]["embedding"]
-        
-        # 3. Calculate dot product similarity
-        # Now a and b will be floats, so math works!
-        score = sum(a * b for a, b in zip(query_embedding, doc_embedding))
+        doc_vec = get_vec(doc)
+        score = cosine_similarity(query_vec, doc_vec)
         
         results.append({
             "index": i,
@@ -411,7 +413,6 @@ async def rerank(
             "relevance_score": float(score),
         })
 
-    # Sort results by score descending
     results.sort(key=lambda x: x["relevance_score"], reverse=True)
     
     if request.top_n is not None:
