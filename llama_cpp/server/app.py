@@ -372,42 +372,53 @@ async def create_embedding(
         **request.model_dump(exclude={"user"}),
     )
 
+from pydantic import BaseModel, Field
+from typing import List, Optional
+
+# 1. Define the schema
+class RerankRequest(BaseModel):
+    model: Optional[str] = None
+    query: str
+    documents: List[str]
+    top_n: Optional[int] = None
+
 @router.post(
-    "/v1/rerank",
+    "/v1/rerank",  # Match the /v1/ prefix pattern
     summary="Rerank",
     dependencies=[Depends(authenticate)],
     tags=[openai_v1_tag],
 )
 async def rerank(
-    self,
-    query: str,
-    documents: List[str],
-    top_n: Optional[int] = None,
-) -> Dict[str, Any]:
+    request: RerankRequest,
+    fastapi_app: FastAPI = Depends(get_app), # This gets the main app instance
+):
+    # Get the llama model from the app state
+    # llama-cpp-python usually stores it in app.state.llama_proxy
+    llama = fastapi_app.state.llama_proxy
+
     # 1. Get embedding for the query
-    # The model expects a single string, NOT a list
-    query_embedding = self.embed(query) 
+    query_embedding = llama.embed(request.query)
     
     results = []
-    for i, doc in enumerate(documents):
+    for i, doc in enumerate(request.documents):
         # 2. Get embedding for the individual document
-        doc_embedding = self.embed(doc)
+        doc_embedding = llama.embed(doc)
         
-        # 3. Calculate similarity (Simplified dot product if normalized)
-        # Ensure you aren't passing the list object to a math function
+        # 3. Calculate dot product similarity
+        # (Assuming embeddings are normalized, which most GGUF embedding models are)
         score = sum(a * b for a, b in zip(query_embedding, doc_embedding))
         
         results.append({
             "index": i,
             "document": doc,
-            "relevance_score": float(score) # Ensure it's a float
+            "relevance_score": float(score) 
         })
 
     # Sort by score descending
     results.sort(key=lambda x: x["relevance_score"], reverse=True)
     
-    if top_n:
-        results = results[:top_n]
+    if request.top_n:
+        results = results[:request.top_n]
         
     return {"results": results}
 
