@@ -385,28 +385,29 @@ async def rerank(
     request: RerankRequest,
     llama_proxy: LlamaProxy = Depends(get_llama_proxy),
 ):
-    """
-    Reranks a list of documents based on a query using embeddings.
-    """
-    # 1. Get embedding for the query
-    query_embedding = llama_proxy.embed(request.query)
+    # Use the model alias from the request to get the actual model instance
+    # If request.model is None, llama-cpp-python usually defaults to the first loaded model
+    model_alias = request.model or list(llama_proxy.keys())[0]
+    model = llama_proxy(model_alias)
+
+    # 1. Get embedding for the query string
+    query_embedding = model.embed(request.query)
     
     results = []
     for i, doc in enumerate(request.documents):
-        # 2. Get embedding for the current document
-        doc_embedding = llama_proxy.embed(doc)
+        # 2. Get embedding for the current document string
+        doc_embedding = model.embed(doc)
         
-        # 3. Calculate Dot Product similarity 
-        # (Works best if model embeddings are normalized)
+        # 3. Calculate dot product
         score = sum(a * b for a, b in zip(query_embedding, doc_embedding))
         
         results.append({
             "index": i,
             "document": doc,
-            "relevance_score": float(score) 
+            "relevance_score": float(score),
         })
 
-    # Sort by score descending
+    # Sort results by score descending
     results.sort(key=lambda x: x["relevance_score"], reverse=True)
     
     if request.top_n is not None:
