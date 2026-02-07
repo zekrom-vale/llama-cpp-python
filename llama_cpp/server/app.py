@@ -379,24 +379,33 @@ async def create_embedding(
     tags=[openai_v1_tag],
 )
 async def rerank(
-    query: str = Body(...),
-    documents: List[str] = Body(...),
-    top_n: Optional[int] = Body(None),
-    model: Optional[str] = Body(None),
-    llama_proxy: LlamaProxy = Depends(get_llama_proxy),
-):
-    # Use the proxy to get the model instance
-    llama = llama_proxy(model)
+    self,
+    query: str,
+    documents: List[str],
+    top_n: Optional[int] = None,
+) -> Dict[str, Any]:
+    # 1. Get embedding for the query
+    # The model expects a single string, NOT a list
+    query_embedding = self.embed(query) 
     
-    # Run the CPU/GPU intensive ranking in the threadpool
-    scores = await run_in_threadpool(llama.rank, query=query, documents=documents)
-    
-    results = [
-        {"index": i, "relevance_score": float(score), "document": {"text": doc}}
-        for i, (score, doc) in enumerate(zip(scores, documents))
-    ]
-    
+    results = []
+    for i, doc in enumerate(documents):
+        # 2. Get embedding for the individual document
+        doc_embedding = self.embed(doc)
+        
+        # 3. Calculate similarity (Simplified dot product if normalized)
+        # Ensure you aren't passing the list object to a math function
+        score = sum(a * b for a, b in zip(query_embedding, doc_embedding))
+        
+        results.append({
+            "index": i,
+            "document": doc,
+            "relevance_score": float(score) # Ensure it's a float
+        })
+
+    # Sort by score descending
     results.sort(key=lambda x: x["relevance_score"], reverse=True)
+    
     if top_n:
         results = results[:top_n]
         
