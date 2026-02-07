@@ -179,6 +179,11 @@ class CreateEmbeddingRequest(BaseModel):
         }
     }
 
+class RerankRequest(BaseModel):
+    model: Optional[str] = None
+    query: str = Field(..., description="The search query to use for reranking.")
+    documents: List[str] = Field(..., description="A list of documents to rerank.")
+    top_n: Optional[int] = Field(None, description="The number of most relevant documents to return.")
 
 class ChatCompletionRequestMessage(BaseModel):
     role: Literal["system", "user", "assistant", "function"] = Field(
