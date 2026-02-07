@@ -8,7 +8,7 @@ import contextlib
 from anyio import Lock
 from functools import partial
 from typing import List, Optional, Union, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import llama_cpp
 
@@ -35,6 +35,7 @@ from llama_cpp.server.settings import (
 from llama_cpp.server.types import (
     CreateCompletionRequest,
     CreateEmbeddingRequest,
+    RerankRequest,
     CreateChatCompletionRequest,
     ModelList,
     TokenizeInputRequest,
@@ -372,16 +373,6 @@ async def create_embedding(
         llama_proxy(request.model).create_embedding,
         **request.model_dump(exclude={"user"}),
     )
-
-from pydantic import BaseModel, Field
-from typing import List, Optional
-
-# 1. Define the schema
-class RerankRequest(BaseModel):
-    model: Optional[str] = None
-    query: str
-    documents: List[str]
-    top_n: Optional[int] = None
 
 @router.post(
     "/v1/rerank",  # Match the /v1/ prefix pattern
