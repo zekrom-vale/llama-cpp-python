@@ -390,15 +390,19 @@ async def rerank(
     model_alias = request.model or list(llama_proxy.keys())[0]
     model = llama_proxy(model_alias)
 
-    # 1. Get embedding for the query string
-    query_embedding = model.embed(request.query)
+    # 1. Get embedding for the query string and extract the first vector
+    query_resp = model.embed(request.query)
+    # Extract the vector from the batch response (handle both list and dict returns)
+    query_embedding = query_resp[0] if isinstance(query_resp, list) else query_resp["data"][0]["embedding"]
     
     results = []
     for i, doc in enumerate(request.documents):
-        # 2. Get embedding for the current document string
-        doc_embedding = model.embed(doc)
+        # 2. Get embedding for the current document
+        doc_resp = model.embed(doc)
+        doc_embedding = doc_resp[0] if isinstance(doc_resp, list) else doc_resp["data"][0]["embedding"]
         
-        # 3. Calculate dot product
+        # 3. Calculate dot product similarity
+        # Now a and b will be floats, so math works!
         score = sum(a * b for a, b in zip(query_embedding, doc_embedding))
         
         results.append({
