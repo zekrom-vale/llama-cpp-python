@@ -394,7 +394,8 @@ async def rerank(
         # It takes (Query, Document) and outputs a similarity score.
         combined_text = f"{request.query} {doc}"
         resp = model.create_embedding(combined_text)
-        score = resp["data"][0]["embedding"][0]
+        # score is deep inside of the list
+        score = resp["data"][0]["embedding"][0][0]
         
         results.append({
             "index": i,
