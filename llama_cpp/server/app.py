@@ -388,28 +388,17 @@ async def rerank(
     model_alias = request.model or list(llama_proxy.keys())[0]
     model = llama_proxy(model_alias)
 
-    def get_vec(text):
-        resp = model.embed(text)
-        return resp[0] if isinstance(resp, list) else resp["data"][0]["embedding"]
-
-    def cosine_similarity(v1, v2):
-        dot_product = sum(a * b for a, b in zip(v1, v2))
-        magnitude1 = math.sqrt(sum(a * a for a in v1))
-        magnitude2 = math.sqrt(sum(b * b for b in v2))
-        if not magnitude1 or not magnitude2:
-            return 0.0
-        return dot_product / (magnitude1 * magnitude2)
-
-    query_vec = get_vec(request.query)
-    
     results = []
     for i, doc in enumerate(request.documents):
-        doc_vec = get_vec(doc)
-        score = cosine_similarity(query_vec, doc_vec)
+        # The BGE-Reranker "Cross-Encoder" logic:
+        # It takes (Query, Document) and outputs a similarity score.
+        combined_text = f"{request.query} {doc}"
+        resp = model.create_embedding(combined_text)
+        score = resp["data"][0]["embedding"][0]
         
         results.append({
             "index": i,
-            "document": doc,
+            "document": { "text": doc }, # Open WebUI often expects the doc object
             "relevance_score": float(score),
         })
 
@@ -418,7 +407,12 @@ async def rerank(
     if request.top_n is not None:
         results = results[:request.top_n]
         
-    return {"results": results}
+    # Return in the standard format used by Cohere/Jina
+    return {
+        "model": model_alias,
+        "results": results,
+        "usage": { "total_tokens": 0 } # Placeholder to prevent client-side errors
+    }
 
 @router.post(
     "/v1/chat/completions",
