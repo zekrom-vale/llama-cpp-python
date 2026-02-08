@@ -375,18 +375,33 @@ async def create_embedding(
         **request.model_dump(exclude={"user"}),
     )
 
-@router.post("/v1/rerank")
+@router.post(
+    "/v1/rerank",
+    summary="Rerank",
+    dependencies=[Depends(authenticate)],
+    tags=[openai_v1_tag],
+)
 async def rerank(request: RerankRequest, llama_proxy: LlamaProxy = Depends(get_llama_proxy)):
     model = llama_proxy(request.model or list(llama_proxy.keys())[0])
 
-    # This single call triggers the batched C++ backend
+    # Trigger the batched C++ backend
     scores = model.rank(query=request.query, documents=request.documents)
 
-    # Sort the results efficiently using Python's Timsort
-    results = sorted([
-        {"index": i, "document": {"text": doc}, "relevance_score": float(scores[i])}
-        for i, doc in enumerate(request.documents)
-    ], key=lambda x: x["relevance_score"], reverse=True)
+    results = []
+    for i, score_data in enumerate(scores):
+        # UNWRAP NESTED LIST: 
+        # If score_data is [0.123], we take the 0 index. 
+        # If it's already 0.123, we take it as is.
+        actual_score = score_data[0] if isinstance(score_data, list) else score_data
+        
+        results.append({
+            "index": i, 
+            "document": {"text": request.documents[i]}, 
+            "relevance_score": float(actual_score)
+        })
+
+    # Sort the results (Similarity: Higher is better)
+    results.sort(key=lambda x: x["relevance_score"], reverse=True)
 
     return {"model": request.model, "results": results[:request.top_n] if request.top_n else results}
 
