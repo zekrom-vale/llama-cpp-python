@@ -375,52 +375,20 @@ async def create_embedding(
         **request.model_dump(exclude={"user"}),
     )
 
-@router.post(
-    "/v1/rerank",
-    summary="Rerank",
-    dependencies=[Depends(authenticate)],
-    tags=[openai_v1_tag],
-)
-async def rerank(
-    request: RerankRequest,
-    llama_proxy: LlamaProxy = Depends(get_llama_proxy),
-):
-    model_alias = request.model or list(llama_proxy.keys())[0]
-    model = llama_proxy(model_alias)
+@router.post("/v1/rerank")
+async def rerank(request: RerankRequest, llama_proxy: LlamaProxy = Depends(get_llama_proxy)):
+    model = llama_proxy(request.model or list(llama_proxy.keys())[0])
 
-    results = []
-    # Replicating the original logic: batching the strings with special tokens
-    formatted_inputs = [f"{request.query}</s><s>{doc}" for doc in request.documents]
-    
-    # We call embed on the whole list at once for efficiency (batching)
-    # Important: We must ensure the underlying model call handles the special tokens
-    # llama-cpp-python's create_embedding handles a list of strings
-    resp = model.create_embedding(formatted_inputs)
-    
-    # Extract the scores based on the logic: rank_scores = [embed[0] for embed in embeds]
-    for i, data_obj in enumerate(resp["data"]):
-        raw_embed = data_obj["embedding"]
-        
-        # Based on your previous error, we know it's nested [[score]]
-        score = raw_embed[0][0] if isinstance(raw_embed[0], list) else raw_embed[0]
-        
-        results.append({
-            "index": i,
-            "document": {"text": request.documents[i]},
-            "relevance_score": float(score),
-        })
+    # This single call triggers the batched C++ backend
+    scores = model.rank(query=request.query, documents=request.documents)
 
-    # Sort by relevance score descending
-    results.sort(key=lambda x: x["relevance_score"], reverse=True)
-    
-    if request.top_n is not None:
-        results = results[:request.top_n]
-        
-    return {
-        "model": model_alias,
-        "results": results,
-        "usage": {"total_tokens": 0}
-    }
+    # Sort the results efficiently using Python's Timsort
+    results = sorted([
+        {"index": i, "document": {"text": doc}, "relevance_score": float(scores[i])}
+        for i, doc in enumerate(request.documents)
+    ], key=lambda x: x["relevance_score"], reverse=True)
+
+    return {"model": request.model, "results": results[:request.top_n] if request.top_n else results}
 
 @router.post(
     "/v1/chat/completions",
