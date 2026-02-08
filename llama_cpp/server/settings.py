@@ -31,7 +31,7 @@ class ModelSettings(BaseSettings):
         description="The number of layers to put on the GPU. The rest will be on the CPU. Set -1 to move all to GPU.",
     )
     pooling_type: Optional[int] = Field(
-        default=None,
+        default=0,
         description="Pooling type for embeddings/reranking. 0 = None, 1 = Mean, 2 = CLS. BGE-Reranker requires 2.",
     )
     split_mode: int = Field(
