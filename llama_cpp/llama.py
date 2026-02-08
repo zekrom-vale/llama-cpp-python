@@ -115,7 +115,6 @@ class Llama:
         # Misc
         spm_infill: bool = False,
         verbose: bool = True,
-        pooling_type: int = llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
         # Extra Params
         **kwargs,  # type: ignore
     ):
