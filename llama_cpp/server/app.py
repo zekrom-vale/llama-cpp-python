@@ -389,30 +389,37 @@ async def rerank(
     model = llama_proxy(model_alias)
 
     results = []
-    for i, doc in enumerate(request.documents):
-        # The BGE-Reranker "Cross-Encoder" logic:
-        # It takes (Query, Document) and outputs a similarity score.
-        combined_text = f"{request.query} {doc}"
-        resp = model.create_embedding(combined_text)
-        # score is deep inside of the list
-        score = resp["data"][0]["embedding"][0][0]
+    # Replicating the original logic: batching the strings with special tokens
+    formatted_inputs = [f"{request.query}</s><s>{doc}" for doc in request.documents]
+    
+    # We call embed on the whole list at once for efficiency (batching)
+    # Important: We must ensure the underlying model call handles the special tokens
+    # llama-cpp-python's create_embedding handles a list of strings
+    resp = model.create_embedding(formatted_inputs)
+    
+    # Extract the scores based on the logic: rank_scores = [embed[0] for embed in embeds]
+    for i, data_obj in enumerate(resp["data"]):
+        raw_embed = data_obj["embedding"]
+        
+        # Based on your previous error, we know it's nested [[score]]
+        score = raw_embed[0][0] if isinstance(raw_embed[0], list) else raw_embed[0]
         
         results.append({
             "index": i,
-            "document": { "text": doc }, # Open WebUI often expects the doc object
+            "document": {"text": request.documents[i]},
             "relevance_score": float(score),
         })
 
+    # Sort by relevance score descending
     results.sort(key=lambda x: x["relevance_score"], reverse=True)
     
     if request.top_n is not None:
         results = results[:request.top_n]
         
-    # Return in the standard format used by Cohere/Jina
     return {
         "model": model_alias,
         "results": results,
-        "usage": { "total_tokens": 0 } # Placeholder to prevent client-side errors
+        "usage": {"total_tokens": 0}
     }
 
 @router.post(
