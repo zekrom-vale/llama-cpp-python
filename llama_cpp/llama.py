@@ -115,6 +115,7 @@ class Llama:
         # Misc
         spm_infill: bool = False,
         verbose: bool = True,
+        pooling_type: int = llama_cpp.LLAMA_POOLING_TYPE_UNSPECIFIED,
         # Extra Params
         **kwargs,  # type: ignore
     ):
@@ -305,7 +306,8 @@ class Llama:
         self.n_batch = min(n_ctx, n_batch)  # ???
         self.n_threads = n_threads or max(multiprocessing.cpu_count() // 2, 1)
         self.n_threads_batch = n_threads_batch or multiprocessing.cpu_count()
-
+        self.context_params.pooling_type = pooling_type
+        
         # Used by the sampler
         self._seed = seed or llama_cpp.LLAMA_DEFAULT_SEED
 
