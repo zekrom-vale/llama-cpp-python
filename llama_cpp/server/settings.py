@@ -30,6 +30,10 @@ class ModelSettings(BaseSettings):
         ge=-1,
         description="The number of layers to put on the GPU. The rest will be on the CPU. Set -1 to move all to GPU.",
     )
+    pooling_type: Optional[int] = Field(
+        default=None,
+        description="Pooling type for embeddings/reranking. 0 = None, 1 = Mean, 2 = CLS. BGE-Reranker requires 2.",
+    )
     split_mode: int = Field(
         default=llama_cpp.LLAMA_SPLIT_MODE_LAYER,
         description="The split mode to use.",
